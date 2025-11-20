@@ -1,0 +1,10 @@
+RELATÓRIO - COMPUTAÇÃO GRÁFICA
+
+Dimensões: 237x133
+Bits por canal: 8
+Canais: 3 (RGB)
+
+Estatísticas:
+R: min=4, max=255, média=140.75, mediana=163.00, dp=67.63
+G: min=2, max=255, média=137.09, mediana=150.00, dp=68.82
+B: min=0, max=255, média=121.69, mediana=139.00, dp=79.01
