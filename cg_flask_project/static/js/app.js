@@ -3,136 +3,385 @@
   const fileInput = document.getElementById("fileInput");
   const uploadInfo = document.getElementById("uploadInfo");
   const previewImg = document.getElementById("previewImg");
+  const originalPlaceholder = document.getElementById("originalPlaceholder");
   const dims = document.getElementById("dims");
-  const btnReduce75 = document.getElementById("btnReduce75");
-  const btnReduce50 = document.getElementById("btnReduce50");
-  const btnReduce25 = document.getElementById("btnReduce25");
-  const btnWebp = document.getElementById("btnWebp");
-  const btnMirror = document.getElementById("btnMirror");
-  const btnGray = document.getElementById("btnGray");
-  const btnAnalyse = document.getElementById("btnAnalyse");
+  const previewsContainer = document.getElementById("previewsContainer");
+  const structureList = document.getElementById("structureList");
+  const statsArea = document.getElementById("statsArea");
   const histR = document.getElementById("histR");
   const histG = document.getElementById("histG");
   const histB = document.getElementById("histB");
-  const structureList = document.getElementById("structureList");
-  const statsArea = document.getElementById("statsArea");
+  const histRStats = document.getElementById("histRStats");
+  const histGStats = document.getElementById("histGStats");
+  const histBStats = document.getElementById("histBStats");
+  const histogramsPlaceholder = document.getElementById("histogramsPlaceholder");
+  const histogramsContent = document.getElementById("histogramsContent");
   const btnReport = document.getElementById("btnReport");
-  const webpInfo = document.getElementById("webpInfo");
 
   let currentFilename = null;
   let uploadedInfo = null;
+  let currentPreviews = {};
 
   async function uploadFile(file) {
     const fd = new FormData();
     fd.append("file", file);
-    const resp = await fetch("/upload", { method: "POST", body: fd });
-    const data = await resp.json();
-    if (data.error) {
-      alert(data.error);
-      return;
+    
+    try {
+      const resp = await fetch("/upload", { method: "POST", body: fd });
+      const data = await resp.json();
+      
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+      
+      currentFilename = data.filename;
+      uploadedInfo = data;
+      
+      // Mostrar imagem original
+      originalPlaceholder.style.display = 'none';
+      previewImg.style.display = 'block';
+      previewImg.src = data.url;
+      
+      uploadInfo.textContent = `${data.filename} — ${data.size_human} — ${data.width} x ${data.height}`;
+      dims.textContent = `Dimensões: ${data.width} x ${data.height} • Tamanho: ${data.size_human}`;
+      
+      // Atualizar link do relatório
+      updateReportLink();
+      
+      // Limpar previews anteriores
+      previewsContainer.innerHTML = '';
+      currentPreviews = {};
+      
+      // Atualizar informações da imagem
+      updateImageInfo();
+      
+    } catch (error) {
+      alert("Erro ao carregar imagem: " + error.message);
     }
-    currentFilename = data.filename;
-    uploadedInfo = data;
-    previewImg.src = data.url;
-    uploadInfo.textContent = `${data.filename} — ${data.size_human} — ${data.width} x ${data.height}`;
-    dims.textContent = `Dimensões originais: ${data.width} x ${data.height}`;
-    btnReport.href = `/report/${encodeURIComponent(currentFilename)}`;
-    btnReport.download = `${currentFilename.split(".").slice(0,-1).join(".")}_report.txt`;
   }
 
+  function updateReportLink() {
+    if (currentFilename) {
+      btnReport.href = `/report/${encodeURIComponent(currentFilename)}`;
+      btnReport.download = `${currentFilename.split('.').slice(0,-1).join('_')}_relatorio.txt`;
+    }
+  }
+
+  function updateImageInfo() {
+    structureList.innerHTML = `
+      <li><span>Formato:</span> <span>${currentFilename.split('.').pop().toUpperCase()}</span></li>
+      <li><span>Largura:</span> <span>${uploadedInfo.width}px</span></li>
+      <li><span>Altura:</span> <span>${uploadedInfo.height}px</span></li>
+      <li><span>Tamanho do arquivo:</span> <span>${uploadedInfo.size_human}</span></li>
+    `;
+  }
+
+  async function createPreview(op, params, title) {
+    if (!currentFilename) {
+      alert("Carregue uma imagem primeiro.");
+      return;
+    }
+
+    // Verificar se preview já existe
+    const previewId = `${op}_${JSON.stringify(params)}`;
+    if (currentPreviews[previewId]) {
+      currentPreviews[previewId].scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    try {
+      const body = { filename: currentFilename, op: op, params: params };
+      const resp = await fetch("/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await resp.json();
+      
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+
+      // Criar elemento do preview
+      const previewElement = createPreviewElement(data, title, op, params);
+      previewsContainer.appendChild(previewElement);
+      
+      // Salvar referência
+      currentPreviews[previewId] = previewElement;
+      
+      // Rolar para o novo preview
+      previewElement.scrollIntoView({ behavior: 'smooth' });
+
+    } catch (error) {
+      alert("Erro ao processar imagem: " + error.message);
+    }
+  }
+
+  function createPreviewElement(data, title, op, params) {
+    const previewId = `preview_${Date.now()}`;
+    const element = document.createElement('div');
+    element.className = 'preview-section';
+    element.id = previewId;
+
+    let infoContent = '';
+    let statsContent = '';
+
+    if (op === 'reduce') {
+      const scale = params.scale * 100;
+      const newWidth = data.outputs.dimensions[0];
+      const newHeight = data.outputs.dimensions[1];
+      const originalWidth = uploadedInfo.width;
+      const originalHeight = uploadedInfo.height;
+      
+      infoContent = `Imagem reduzida para ${scale}% do tamanho original`;
+      statsContent = `
+        <div class="stat-item">
+          <div class="stat-label">Largura Original</div>
+          <div class="stat-value">${originalWidth}px</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Nova Largura</div>
+          <div class="stat-value">${newWidth}px</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Redução</div>
+          <div class="stat-value">${scale}%</div>
+        </div>
+      `;
+    } else if (op === 'webp') {
+      const originalKB = Math.round(data.outputs.size_before / 1024);
+      const webpKB = Math.round(data.outputs.size_after / 1024);
+      const savings = Math.round(((originalKB - webpKB) / originalKB) * 100);
+      infoContent = `Conversão para formato WEBP com compressão avançada`;
+      statsContent = `
+        <div class="stat-item">
+          <div class="stat-label">Tamanho Original</div>
+          <div class="stat-value">${originalKB} KB</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Tamanho WEBP</div>
+          <div class="stat-value">${webpKB} KB</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Economia</div>
+          <div class="stat-value">${savings}%</div>
+        </div>
+      `;
+    } else if (op === 'mirror') {
+      infoContent = 'Espelhamento vertical aplicado - imagem refletida no eixo horizontal';
+      statsContent = `
+        <div class="stat-item">
+          <div class="stat-label">Tipo</div>
+          <div class="stat-value">Espelhamento</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Eixo</div>
+          <div class="stat-value">Vertical</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Dimensões</div>
+          <div class="stat-value">${uploadedInfo.width} × ${uploadedInfo.height}</div>
+        </div>
+      `;
+    } else if (op === 'gray') {
+      infoContent = 'Conversão para escala de cinza - removida informação de cor, mantida luminância';
+      statsContent = `
+        <div class="stat-item">
+          <div class="stat-label">Modo de Cor</div>
+          <div class="stat-value">Escala de Cinza</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Canais</div>
+          <div class="stat-value">1 (Luminância)</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Dimensões</div>
+          <div class="stat-value">${uploadedInfo.width} × ${uploadedInfo.height}</div>
+        </div>
+      `;
+    }
+
+    element.innerHTML = `
+      <div class="preview-header">
+        <h6 class="mb-0">${title}</h6>
+        <button class="btn-close-preview" onclick="closePreview('${previewId}')">✕</button>
+      </div>
+      <div class="preview-content">
+        <img src="/outputs/${data.outputs.image}" alt="${title}" class="preview-image" />
+        <div class="preview-info">
+          ${infoContent}
+        </div>
+        <div class="preview-stats">
+          ${statsContent}
+        </div>
+        <button class="btn-download-preview" onclick="downloadImage('${data.outputs.image}')">
+          <span>⬇️</span>
+          <span>Baixar Imagem Processada</span>
+        </button>
+      </div>
+    `;
+
+    return element;
+  }
+
+  async function generateHistograms() {
+    if (!currentFilename) {
+      alert("Carregue uma imagem primeiro.");
+      return;
+    }
+
+    try {
+      const body = { filename: currentFilename, op: "analyse" };
+      const resp = await fetch("/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      
+      const data = await resp.json();
+      
+      if (data.error) {
+        alert(data.error);
+        return;
+      }
+
+      // Atualizar informações da imagem
+      const s = data.outputs.structure;
+      structureList.innerHTML += `
+        <li><span>Modo:</span> <span>${s.mode}</span></li>
+        <li><span>Canais:</span> <span>${s.channels}</span></li>
+        <li><span>Bits por canal:</span> <span>${s.bits_per_channel}</span></li>
+        <li><span>Bits por pixel:</span> <span>${s.bits_per_pixel}</span></li>
+        <li><span>Tamanho em memória:</span> <span>${(s.size_in_memory_bytes / 1024).toFixed(1)} KB</span></li>
+      `;
+
+      // Atualizar estatísticas
+      const stats = data.outputs.hist_stats;
+      statsArea.innerHTML = `
+        <strong>Estatísticas dos Canais RGB:</strong><br><br>
+        <strong>🔴 Vermelho (R):</strong><br>
+        • Mínimo: ${stats.R.min}<br>
+        • Máximo: ${stats.R.max}<br>
+        • Média: ${stats.R.mean.toFixed(1)}<br>
+        • Mediana: ${stats.R.median}<br>
+        • Desvio Padrão: ${stats.R.std.toFixed(1)}<br><br>
+        
+        <strong>🟢 Verde (G):</strong><br>
+        • Mínimo: ${stats.G.min}<br>
+        • Máximo: ${stats.G.max}<br>
+        • Média: ${stats.G.mean.toFixed(1)}<br>
+        • Mediana: ${stats.G.median}<br>
+        • Desvio Padrão: ${stats.G.std.toFixed(1)}<br><br>
+        
+        <strong>🔵 Azul (B):</strong><br>
+        • Mínimo: ${stats.B.min}<br>
+        • Máximo: ${stats.B.max}<br>
+        • Média: ${stats.B.mean.toFixed(1)}<br>
+        • Mediana: ${stats.B.median}<br>
+        • Desvio Padrão: ${stats.B.std.toFixed(1)}
+      `;
+
+      // Atualizar estatísticas individuais dos histogramas
+      histRStats.innerHTML = `
+        <div>Mín: ${stats.R.min}</div>
+        <div>Máx: ${stats.R.max}</div>
+        <div>Média: ${stats.R.mean.toFixed(1)}</div>
+        <div>Mediana: ${stats.R.median}</div>
+        <div>Desvio: ${stats.R.std.toFixed(1)}</div>
+      `;
+
+      histGStats.innerHTML = `
+        <div>Mín: ${stats.G.min}</div>
+        <div>Máx: ${stats.G.max}</div>
+        <div>Média: ${stats.G.mean.toFixed(1)}</div>
+        <div>Mediana: ${stats.G.median}</div>
+        <div>Desvio: ${stats.G.std.toFixed(1)}</div>
+      `;
+
+      histBStats.innerHTML = `
+        <div>Mín: ${stats.B.min}</div>
+        <div>Máx: ${stats.B.max}</div>
+        <div>Média: ${stats.B.mean.toFixed(1)}</div>
+        <div>Mediana: ${stats.B.median}</div>
+        <div>Desvio: ${stats.B.std.toFixed(1)}</div>
+      `;
+
+      // Mostrar histogramas
+      histogramsPlaceholder.style.display = 'none';
+      histogramsContent.style.display = 'block';
+      
+      histR.src = `/outputs/${data.outputs.hist_images.R}`;
+      histG.src = `/outputs/${data.outputs.hist_images.G}`;
+      histB.src = `/outputs/${data.outputs.hist_images.B}`;
+
+      // Rolar para histogramas
+      document.querySelector('.card-histograms').scrollIntoView({ behavior: 'smooth' });
+
+    } catch (error) {
+      alert("Erro ao gerar histogramas: " + error.message);
+    }
+  }
+
+  // Funções globais
+  window.closePreview = function(previewId) {
+    const element = document.getElementById(previewId);
+    if (element) {
+      element.remove();
+    }
+  };
+
+  window.downloadImage = function(imageName) {
+    window.open(`/outputs/${imageName}`, "_blank");
+  };
+
+  // Event Listeners INDIVIDUAIS (GARANTIDO QUE FUNCIONAM)
   fileInput.addEventListener("change", (ev) => {
     if (ev.target.files && ev.target.files[0]) {
       uploadFile(ev.target.files[0]);
     }
   });
 
-  async function callProcess(op, params = {}) {
-    if (!currentFilename) return alert("Carregue uma imagem primeiro.");
-    const body = { filename: currentFilename, op: op, params: params };
-    const resp = await fetch("/process", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const data = await resp.json();
-    if (data.error) return alert(data.error);
-    return data;
-  }
+  // Botões de operação - LISTENERS INDIVIDUAIS
+  document.getElementById("btnReduce75").addEventListener("click", () => {
+    createPreview("reduce", { scale: 0.75 }, "🔄 75% - Imagem Reduzida");
+  });
 
-  btnReduce75.addEventListener("click", async () => {
-    const data = await callProcess("reduce", { scale: 0.75 });
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      dims.textContent = `Resultado: ${data.outputs.dimensions[0]} x ${data.outputs.dimensions[1]}`;
-      // provide download link by opening image in new tab on click
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
-    }
+  document.getElementById("btnReduce50").addEventListener("click", () => {
+    createPreview("reduce", { scale: 0.5 }, "🔄 50% - Imagem Reduzida");
   });
-  btnReduce50.addEventListener("click", async () => {
-    const data = await callProcess("reduce", { scale: 0.5 });
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      dims.textContent = `Resultado: ${data.outputs.dimensions[0]} x ${data.outputs.dimensions[1]}`;
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
-    }
+
+  document.getElementById("btnReduce25").addEventListener("click", () => {
+    createPreview("reduce", { scale: 0.25 }, "🔄 25% - Imagem Reduzida");
   });
-  btnReduce25.addEventListener("click", async () => {
-    const data = await callProcess("reduce", { scale: 0.25 });
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      dims.textContent = `Resultado: ${data.outputs.dimensions[0]} x ${data.outputs.dimensions[1]}`;
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
+
+  document.getElementById("btnWebp").addEventListener("click", () => {
+    createPreview("webp", {}, "🖼️ WEBP - Imagem Convertida");
+  });
+
+  document.getElementById("btnMirror").addEventListener("click", () => {
+    createPreview("mirror", {}, "🪞 Espelhamento - Imagem Espelhada");
+  });
+
+  document.getElementById("btnGray").addEventListener("click", () => {
+    createPreview("gray", {}, "⚫ Tons de Cinza - Imagem em Escala de Cinza");
+  });
+
+  document.getElementById("btnAnalyse").addEventListener("click", () => {
+    generateHistograms();
+  });
+
+  // Botão de relatório
+  btnReport.addEventListener('click', function(e) {
+    if (!currentFilename) {
+      e.preventDefault();
+      alert("Carregue uma imagem primeiro para gerar o relatório.");
     }
   });
 
-  btnWebp.addEventListener("click", async () => {
-    const data = await callProcess("webp");
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      webpInfo.innerHTML = `<strong>WEBP:</strong> Antes: ${Math.round(data.outputs.size_before/1024)} KB — Depois: ${Math.round(data.outputs.size_after/1024)} KB`;
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
-    }
-  });
-
-  btnMirror.addEventListener("click", async () => {
-    const data = await callProcess("mirror");
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
-    }
-  });
-
-  btnGray.addEventListener("click", async () => {
-    const data = await callProcess("gray");
-    if (data) {
-      previewImg.src = `/outputs/${data.outputs.image}`;
-      window.open(`/outputs/${data.outputs.image}`, "_blank");
-    }
-  });
-
-  btnAnalyse.addEventListener("click", async () => {
-    const data = await callProcess("analyse");
-    if (!data) return;
-    // structure
-    const s = data.outputs.structure;
-    structureList.innerHTML = "";
-    structureList.innerHTML += `<li>Modo: ${s.mode}</li>`;
-    structureList.innerHTML += `<li>Canais: ${s.channels}</li>`;
-    structureList.innerHTML += `<li>Bits por canal: ${s.bits_per_channel}</li>`;
-    structureList.innerHTML += `<li>Bits por pixel: ${s.bits_per_pixel}</li>`;
-    structureList.innerHTML += `<li>Dimensões: ${s.dimensions[0]} x ${s.dimensions[1]}</li>`;
-    if (s.file_size_bytes) {
-      structureList.innerHTML += `<li>Tamanho do arquivo: ${Math.round(s.file_size_bytes/1024)} KB</li>`;
-    }
-    // stats
-    const stats = data.outputs.hist_stats;
-    statsArea.textContent = `R: min=${stats.R.min}, max=${stats.R.max}, mean=${stats.R.mean}, median=${stats.R.median}, std=${stats.R.std}\n`;
-    statsArea.textContent += `G: min=${stats.G.min}, max=${stats.G.max}, mean=${stats.G.mean}, median=${stats.G.median}, std=${stats.G.std}\n`;
-    statsArea.textContent += `B: min=${stats.B.min}, max=${stats.B.max}, mean=${stats.B.mean}, median=${stats.B.median}, std=${stats.B.std}\n`;
-    // show hist images
-    histR.src = `/outputs/${data.outputs.hist_images.R}`;
-    histG.src = `/outputs/${data.outputs.hist_images.G}`;
-    histB.src = `/outputs/${data.outputs.hist_images.B}`;
-  });
+  // Debug
+  console.log("Aplicação carregada com sucesso!");
 
 })();
