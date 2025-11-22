@@ -18,9 +18,6 @@ for d in (UPLOAD_DIR, OUTPUT_DIR):
 
 ALLOWED_EXT = {"png", "jpg", "jpeg", "bmp"}
 
-# Path to the PDF enunciado you uploaded (from conversation history)
-ENUNCIADO_PATH = "/mnt/data/CG_2BIM_Prova_Comp.pdf"
-
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
@@ -94,15 +91,6 @@ def compute_histograms_and_stats(pil_img, out_prefix):
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-@app.route("/enunciado")
-def enunciado():
-    # Serve the PDF from the uploaded path. Use send_file with the full path.
-    if os.path.exists(ENUNCIADO_PATH):
-        return send_file(ENUNCIADO_PATH, as_attachment=False)
-    return "Enunciado não encontrado no caminho esperado.", 404
-
 
 @app.route("/upload", methods=["POST"])
 def upload():
